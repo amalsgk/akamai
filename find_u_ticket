@@ -24,8 +24,6 @@ class Alerts_check:
         self.inactive = []
 
     def data_collection(self, s_string):
-        print("Starting Analysis...Please wait")
-        print("\n[Time : " + str(datetime.now().strftime("%d/%m/%Y %H:%M:%S")) + "]\n\n")
         proc = subprocess.Popen(self.query, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
         for row in proc.stdout:
             data = row.split()
@@ -59,10 +57,11 @@ def identity(host, user):
 
 def rhm_func(datafile):
     columns = shutil.get_terminal_size().columns
-    print("RHM Ticket Analyzer v1.0\n-------------------------\n".center(columns))
+    print("RHM Ticket Analyzer v1.0\n\n".center(columns))
+    print("Starting Analysis...Please wait!!!")
     RHM_analyser = Alerts_check(
-        "agg -q mega "'"SELECT DISTINCT m.region as REGION, m.ticket as TICKET FROM MCM_SiebelIssuesOpen_v2 m, manual_suspensions s, ghostinfo p WHERE m.region = s.target_region AND m.scope ='"'region'"' AND m.problem_subtype != '"'IPv6'"' AND (m.timeopened < CURRENT_TIMESTAMP-57200) AND p.physregion = m.region AND m.del_owner_group_name = '"'Platform Operations'"' AND m.del_owner in ('"'nocc_first_response_queue'"','"'nocc_network1_queue'"', '"'nocc_network2_queue'"') AND m.abstract like '"'%RHM%'"' AND m.abstract NOT LIKE '"'%VIP%'"' order by m.region"')
-    RHM_analyser.data_collection("RHM")
+        "agg -q mega "'"SELECT DISTINCT m.region AS REGION, m.ticket AS TICKET FROM MCM_SiebelIssuesOpen_v2 m, manual_suspensions s, ghostinfo p WHERE m.region = s.target_region AND m.scope ='"'region'"' AND m.problem_subtype != '"'IPv6'"' AND (m.timeopened < CURRENT_TIMESTAMP-57600) AND p.physregion = m.region AND m.del_owner_group_name = '"'Platform Operations'"' AND m.del_owner IN ('"'nocc_first_response_queue'"','"'nocc_network1_queue'"', '"'nocc_network2_queue'"') AND m.abstract like '"'%RHM%'"' AND m.abstract NOT LIKE '"'%VIP%'"' AND m.region != "0" ORDER BY m.region"')
+    RHM_analyser.data_collection("RHM shows regions in an unstable state\|Region diagnosed bad by RHM too often\|Brave region with RHM loss")
     if len(RHM_analyser.inactive) == 0:
         print("None of the regions are eligible for unsuspension")
     else:
@@ -72,7 +71,7 @@ def rhm_func(datafile):
         time.sleep(5)
         print("Initiating makoDB check...."'\n')
         with open(datafile, 'a') as file:
-            file.write("Possible [RHM] unsuspension tickets\n".center(200) + "".center(35, "-") + '\n\n')
+            file.write("Possible [RHM] unsuspension tickets\n\n".center(200))
         for i_region in RHM_analyser.inactive:
             if len(i_region) == 0:
                 print("No eligible regions for unsuspension")
@@ -81,7 +80,7 @@ def rhm_func(datafile):
                 index = RHM_analyser.regions.index(RHM_analyser.inactive[counter])
                 tix_dtls = RHM_analyser.tickets[index]
                 reg_dtls = str(RHM_analyser.regions[index])
-                m_cmd = "makodb -q " '"'"SELECT COUNT(DISTINCT region) from rhm_regstatusreport where timestamp > (current_timestamp-1)  and avglost > avghithresh and region=""'" + str(
+                m_cmd = "makodb -q " '"'"SELECT COUNT(DISTINCT region) from rhm_regstatusreport where timestamp > (current_timestamp-2)  and avglost > avghithresh and region=""'" + str(
                     reg_dtls) + "'" " order by region"'"'
                 m_exec = subprocess.Popen(m_cmd, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
                 for m_result in m_exec.stdout:
@@ -100,19 +99,18 @@ def rhm_func(datafile):
 def region_stale_metadata(datafile):
     time.sleep(5)
     columns = shutil.get_terminal_size().columns
-    print("Region with Stale Metadata Ticket Analyzer v1.0\n-----------------------------------------------\n".center(columns))
+    print("Region with Stale Metadata Ticket Analyzer v1.0\n".center(columns))
     identity(re.sub("\..*", "", socket.gethostname()), os.getlogin())
     print("Gathering data... Please wait !!!"'\n')
     rsm_analyzer = Alerts_check(
-        "agg -q mega "'"SELECT DISTINCT m.region as REGION, m.ticket as TICKET FROM MCM_SiebelIssuesOpen_v2 m where abstract like '"'%Region with stale metadata%'"' AND m.del_owner_group_name = '"'Platform Operations'"'  AND m.del_owner in ('"'nocc_first_response_queue'"','"'nocc_hardware1_queue'"', '"'nocc_hardware2_queue'"','"'nocc_software1_queue'"', '"'nocc_software2_queue'"','"'nocc_secure2_queue'"','"'nocc_network1_queue'"','"'nocc_network2_queue'"') order by m.region"')
+        "agg -q mega "'"SELECT DISTINCT m.region AS REGION, m.ticket AS TICKET FROM MCM_SiebelIssuesOpen_v2 m WHERE ABSTRACT LIKE '"'%Region with stale metadata%'"' AND m.del_owner_group_name = '"'Platform Operations'"'  AND m.del_owner IN ('"'nocc_first_response_queue'"','"'nocc_hardware1_queue'"', '"'nocc_hardware2_queue'"','"'nocc_software1_queue'"', '"'nocc_software2_queue'"','"'nocc_secure2_queue'"','"'nocc_network1_queue'"','"'nocc_network2_queue'"') AND m.region != "0" ORDER BY m.region"')
     rsm_analyzer.data_collection("Region with stale metadata")
     if len(rsm_analyzer.inactive) == 0:
         print("None of the regions are eligible for unsuspension")
     else:
         print("Alerts are inactive for region : " + " ".join(rsm_analyzer.inactive))
         with open(datafile, 'a') as file:
-            file.write("Possible [Region with Stale metadata] unsuspension tickets\n".center(201) + "".center(58,
-                                                                                                              "-") + '\n\n')
+            file.write("Possible [Region with Stale metadata] unsuspension tickets\n\n".center(201))
         time.sleep(5)
         counter = 0
         for _ in rsm_analyzer.inactive:
@@ -132,7 +130,7 @@ def region_stale_metadata(datafile):
 
 def downedge_reg(datafile):
     columns = shutil.get_terminal_size().columns
-    print("Down EDGE Region Ticket Analyzer v1.0\n-------------------------------------\n".center(columns))
+    print("Down EDGE Region Ticket Analyzer v1.0\n".center(columns))
     print("Gathering data... Please wait !!!"'\n')
     de_analyzer = Alerts_check(
         "agg -q mega "'"SELECT DISTINCT REGION, TICKET FROM MCM_SiebelIssuesOpen_v2  WHERE REGION IN (SELECT g.PHYSREGION FROM ghostinfo g, system s WHERE s.IP = g.GHOSTIP) AND ABSTRACT LIKE  '"'%Down Edge Region%'"' OR ABSTRACT LIKE '"'%Region running old software%'"' OR ABSTRACT LIKE '"'%Freeflow Region Not in regionset%'"' AND del_owner_group_name = '"'Platform Operations'"'  AND del_owner in ('"'nocc_first_response_queue'"','"'nocc_hardware1_queue'"', '"'nocc_hardware2_queue'"','"'nocc_software1_queue'"', '"'nocc_software2_queue'"','"'nocc_secure2_queue'"','"'nocc_network1_queue'"','"'nocc_network2_queue'"') AND REGION != "0" ORDER BY REGION"')
@@ -143,8 +141,8 @@ def downedge_reg(datafile):
         print("Alerts are inactive for region : " + " ".join(de_analyzer.inactive))
         with open(datafile, 'a') as file:
             file.write(
-                "Possible [Down Edge Region|Region running old software|Freeflow Region Not in regionset.W.all] unsuspension tickets\n".center(
-                    200) + "".center(55, "-") + '\n\n')
+                "Possible [Down Edge Region|Region running old software|Freeflow Region Not in regionset.W.all] unsuspension tickets\n\n".center(
+                    200))
         time.sleep(5)
         counter = 0
         for _ in de_analyzer.inactive:
@@ -169,6 +167,8 @@ def sendmail(user, path, subject):
 
 
 def main():
+    time.sleep(5)
+    print("\n[Time : " + str(datetime.now().strftime("%d/%m/%Y %H:%M:%S")) + "]")
     identity(re.sub("\..*", "", socket.gethostname()), os.getlogin())
     rhm_func("data.txt")
     region_stale_metadata("data.txt")
