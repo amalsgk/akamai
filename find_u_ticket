@@ -12,10 +12,12 @@ import os
 import socket
 import time
 import shutil
+import akamai.color
+
+_CC = akamai.color.colors()
 
 
 class Alerts_check:
-
     def __init__(self, query):
         self.query = query
         self.tickets = []
@@ -42,7 +44,7 @@ class Alerts_check:
 
 def filechecks(filename, path):
     if os.path.exists(path) is True:
-        print("Clearing old " '"' + str(filename) + '"' " file"'\n')
+        # print("Clearing old " '"' + str(filename) + '"' " file"'\n')
         os.remove(filename)
     else:
         if os.path.exists(path) is False:
@@ -51,30 +53,33 @@ def filechecks(filename, path):
 
 def identity(host, user):
     tag = "[" + str(user) + "@akamai.com in " + str(host) + "]"
-    print("Executed by : " + str(tag))
+    print(_CC.color_string("Executed by : " + str(tag), 'GRN'))
 
 
 def rhm_func(datafile):
     columns = shutil.get_terminal_size().columns
     print("RHM Ticket Analyzer v1.0\n\n".center(columns))
-    print("Starting Analysis...Please wait!!!")
+    print(
+        "Captures following tickets::\n****************************\n\t+ RHM shows region in an unstable state\n\t+ Region diagnosed bad by RHM\n\t+ BRAVE region with RHM loss\n")
+    print(_CC.color_string("Gathering data. Please wait!!!\n", 'RED'))
     RHM_analyser = Alerts_check(
         "agg -q mega "'"SELECT DISTINCT m.region AS REGION, m.ticket AS TICKET FROM MCM_SiebelIssuesOpen_v2 m, manual_suspensions s, ghostinfo p WHERE m.region = s.target_region AND m.scope ='"'region'"' AND m.problem_subtype != '"'IPv6'"' AND (m.timeopened < CURRENT_TIMESTAMP-57600) AND p.physregion = m.region AND m.del_owner_group_name = '"'Platform Operations'"' AND m.del_owner IN ('"'nocc_first_response_queue'"','"'nocc_network1_queue'"', '"'nocc_network2_queue'"') AND m.abstract like '"'%RHM%'"' AND m.abstract NOT LIKE '"'%VIP%'"' AND m.region != "0" ORDER BY m.region"')
     RHM_analyser.data_collection(
         "RHM shows regions in an unstable state\|Region diagnosed bad by RHM too often\|Brave region with RHM loss")
     if len(RHM_analyser.inactive) == 0:
-        print("None of the regions are eligible for unsuspension")
+        print(_CC.color_string("None of the regions are eligible for unsuspension", 'RED'))
     else:
         filechecks("data.txt", "/home/" + str(os.getlogin()) + "/" + "data.txt")
-        print("Alerts are inactive for region : " + " ".join(RHM_analyser.inactive))
+        print(_CC.color_string("Alerts are inactive for region : " + " ".join(RHM_analyser.inactive) + '\n', 'WHT'))
         counter = 0
         time.sleep(5)
-        print("Initiating makoDB check...."'\n')
+        print(_CC.color_string("\nInitiating makoDB check...."'\n', 'GRN'))
         with open(datafile, 'a') as file:
             file.write("Possible [RHM] unsuspension tickets\n\n".center(200))
+        print(_CC.color_string("RESULTS::\n---------\n", 'YEL'))
         for i_region in RHM_analyser.inactive:
             if len(i_region) == 0:
-                print("No eligible regions for unsuspension")
+                print(_CC.color_string("No eligible regions for unsuspension", 'BLD'))
                 exit()
             if len(i_region) != 0:
                 index = RHM_analyser.regions.index(RHM_analyser.inactive[counter])
@@ -99,24 +104,26 @@ def region_stale_metadata(datafile):
     time.sleep(5)
     columns = shutil.get_terminal_size().columns
     print("Region with Stale Metadata Ticket Analyzer v1.0\n".center(columns))
-    print("Gathering data... Please wait !!!"'\n')
+    print(
+        "Captures following tickets::\n****************************\n\t+ Region with Stale metadata\n")
+    print(_CC.color_string("Gathering data. Please wait!!!\n", 'RED'))
     rsm_analyzer = Alerts_check(
         "agg -q mega "'"SELECT DISTINCT m.region AS REGION, m.ticket AS TICKET FROM MCM_SiebelIssuesOpen_v2 m WHERE ABSTRACT LIKE '"'%Region with stale metadata%'"' AND m.del_owner_group_name = '"'Platform Operations'"'  AND m.del_owner IN ('"'nocc_first_response_queue'"','"'nocc_hardware1_queue'"', '"'nocc_hardware2_queue'"','"'nocc_software1_queue'"', '"'nocc_software2_queue'"','"'nocc_secure2_queue'"','"'nocc_network1_queue'"','"'nocc_network2_queue'"') AND m.region != "0" ORDER BY m.region"')
     rsm_analyzer.data_collection("Region with stale metadata")
     if len(rsm_analyzer.inactive) == 0:
-        print("None of the regions are eligible for unsuspension")
+        print(_CC.color_string("None of the regions are eligible for unsuspension", 'BLD'))
     else:
-        print("Alerts are inactive for region : " + " ".join(rsm_analyzer.inactive))
+        print(_CC.color_string("Alerts are inactive for region : " + " ".join(rsm_analyzer.inactive), 'WHT'))
         with open(datafile, 'a') as file:
             file.write("\nPossible [Region with Stale metadata] unsuspension tickets\n\n".center(201))
+        print(_CC.color_string("RESULTS::\n---------\n", 'YEL'))
         time.sleep(5)
         counter = 0
         for _ in rsm_analyzer.inactive:
             index = rsm_analyzer.regions.index(rsm_analyzer.inactive[counter])
             tix_dtls = rsm_analyzer.tickets[index]
             reg_dtls = rsm_analyzer.regions[index]
-            print("'"'Region with Stale metadata'"' alert cleared for region " + str(reg_dtls) + " under ticket " + str(
-                tix_dtls))
+            print("Region " + str(reg_dtls) + " is safe to unsuspend " + str(tix_dtls))
             with open(datafile, 'a') as file:
                 file.write(
                     "\nTICKET ID : {}\nREGION : {}\n".format(
@@ -127,26 +134,29 @@ def region_stale_metadata(datafile):
 def downedge_reg(datafile):
     columns = shutil.get_terminal_size().columns
     print("Down EDGE Region Ticket Analyzer v1.0\n".center(columns))
-    print("Gathering data... Please wait !!!"'\n')
+    print(
+        "Captures following tickets::\n****************************\n\t+ Down Edge region with *\n\t+ Region running old software\n\t+ Freeflow Region Not in regionset.W.all\n")
+    print(_CC.color_string("Gathering data. Please wait!!!\n", 'RED'))
     de_analyzer = Alerts_check(
         "agg -q mega "'"SELECT DISTINCT REGION, TICKET FROM MCM_SiebelIssuesOpen_v2  WHERE REGION IN (SELECT g.PHYSREGION FROM ghostinfo g, system s WHERE s.IP = g.GHOSTIP) AND (ABSTRACT LIKE  '"'%Down Edge Region%'"' OR ABSTRACT LIKE '"'%Region running old software%'"' OR ABSTRACT LIKE '"'%Freeflow Region Not in regionset%'"') AND del_owner_group_name = '"'Platform Operations'"'  AND del_owner in ('"'nocc_first_response_queue'"','"'nocc_hardware1_queue'"', '"'nocc_hardware2_queue'"','"'nocc_software1_queue'"', '"'nocc_software2_queue'"','"'nocc_secure2_queue'"','"'nocc_network1_queue'"','"'nocc_network2_queue'"') AND REGION > "0" ORDER BY REGION"')
     de_analyzer.data_collection("Down Edge Region\|Region running old software\|Freeflow Region Not in regionset.W.all")
     if len(de_analyzer.regions) == 0:
-        print("None of the regions are eligible for unsuspension")
+        print(_CC.color_string("None of the regions are eligible for unsuspension", 'BLD'))
     else:
-        print("Alerts are inactive for region : " + " ".join(de_analyzer.inactive))
+        print(_CC.color_string("Alerts are inactive for region : " + " ".join(de_analyzer.inactive) + '\n', 'WHT'))
         with open(datafile, 'a') as file:
             file.write(
                 "Possible [Down Edge Region|Region running old software|Freeflow Region Not in regionset.W.all] unsuspension tickets\n\n".center(
                     200))
+        print(_CC.color_string("RESULTS::\n---------\n", 'YEL'))
         time.sleep(5)
         counter = 0
         for _ in de_analyzer.inactive:
             index = de_analyzer.regions.index(de_analyzer.inactive[counter])
             tix_dtls = de_analyzer.tickets[index]
             reg_dtls = de_analyzer.regions[index]
-            print("Alert is inactive in region " '"' + str(reg_dtls) + '"'" under the ticket " + str(
-                tix_dtls))
+            print("Region " + str(reg_dtls) + " is safe to unsuspend " + str(tix_dtls))
+            tix_dtls))
             with open(datafile, 'a') as file:
                 file.write(
                     "\nTICKET ID : {}\nREGION : {}\n".format(tix_dtls, reg_dtls))
@@ -156,23 +166,23 @@ def downedge_reg(datafile):
 def vips(datafile):
     columns = shutil.get_terminal_size().columns
     print("VIP Ticket Analyzer v1.0\n\n".center(columns))
-    print("Gathering data... Please wait !!!"'\n')
+    print(_CC.color_string("Gathering data. Please wait!!!\n", 'RED'))
     vip_analyser = Alerts_check(
         "agg -q mega "'"SELECT m.region as REGION, m.ticket as TICKET FROM MCM_SiebelIssuesOpen_v2 m, manual_suspensions s WHERE m.ticket = s.ticket AND (m.timeopened < CURRENT_TIMESTAMP-846000) AND m.region = s.target_region AND m.del_owner_group_name = '"'Platform Operations'"' AND m.del_owner in ('"'nocc_network1_queue'"', '"'nocc_network2_queue'"') AND m.abstract like '"'%VIP%'"' order by m.ticket"'"")
     vip_analyser.data_collection("VIP")
     if len(vip_analyser.inactive) == 0:
-        print("None of the regions are eligible for unsuspension")
+        print(_CC.color_string("None of the regions are eligible for unsuspension", 'BLD'))
     else:
-        print("VIP alerts are inactive for region : " + " ".join(vip_analyser.inactive))
+        print(_CC.color_string("VIP alerts are inactive for region : " + " ".join(vip_analyser.inactive) + '\n', 'WHT'))
         counter = 0
         time.sleep(5)
-        print("Running VIP queries...."'\n')
+        print(_CC.color_string("\nRunning VIP queries...."'\n', 'BLD'))
         with open(datafile, 'a') as file:
             file.write("Possible [VIP] unsuspension tickets\n\n".center(200))
+        print(_CC.color_string("RESULTS::\n---------\n", 'YEL'))
         for vip_region in vip_analyser.inactive:
             if len(vip_region) == 0:
-                print("No eligible regions for unsuspension")
-                exit()
+                print(_CC.color_string("None of the regions are eligible for unsuspension", 'BLD'))
             if len(vip_region) > 0:
                 index = vip_analyser.regions.index(vip_analyser.inactive[counter])
                 tix_dtls = vip_analyser.tickets[index]
@@ -196,16 +206,17 @@ def sendmail(user, path, subject):
 
 def main():
     time.sleep(5)
-    print("**********************************************")
-    print("[Time : " + str(datetime.now().strftime("%d/%m/%Y %H:%M:%S")) + "]")
+    print(_CC.color_string("**********************************************\n[Time : " + str(
+        datetime.now().strftime("%d/%m/%Y %H:%M:%S")) + "]", 'GRN'))
     identity(re.sub("\..*", "", socket.gethostname()), os.getlogin())
-    print("**********************************************")
+    print(_CC.color_string("**********************************************", 'GRN'))
     rhm_func("data.txt")
     region_stale_metadata("data.txt")
     downedge_reg("data.txt")
     vips("data.txt")
     time.sleep(5)
-    print('\n'"Completed writing data to file " + '"' + "/home/" + str(os.getlogin()) + "/data.txt"'"''\n')
+    print(_CC.color_string(
+        '\n'"Completed writing data to file " + '"' + "/home/" + str(os.getlogin()) + "/data.txt"'"''\n', 'RED'))
     sendmail(os.getlogin(), '"'"/home/" + str(os.getlogin()) + "/data.txt"'"',
              "**Notification: Possible unsuspension tickets " + str(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
 
