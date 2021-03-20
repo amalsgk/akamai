@@ -1,33 +1,82 @@
 #!/usr/bin/env python3
 
+import argparse
 import requests
 import json
 
+parser = argparse.ArgumentParser(description="Check the health of the host via CM API")
+parser.add_argument("--host", help="Enter the hostname in format *.foo.bar.")
+parser.add_argument("--dc", help="Enter the dc name SJ/CH")
+parser.add_argument("--user", help="Enter the CM username")
+parser.add_argument("--password", help="Enter the CM password")
 
-hostname = ['a10-100-165-144.csi.foo.bar' , 'a10-100-165-145.csi.foo.bar' , 'a10-100-165-172.csi.foo.bar' , 'a10-100-165-45.csi.foo.bar']
-username = "admin"
-passwd = "ihatebart"
+args = parser.parse_args()
 
-url = "http://cm-sj.csi.akadns.net:7180/api/v19/hosts/"
-data1 = requests.get(url, auth=(username, passwd))
-data = data1.json()
-for g in range(len(hostname)):
-    for i in range(len(data['items'])):
-        if str(hostname[g]) in data['items'][i]['hostname']:
-            print("\n" + "------------------------------" + "\n" + "Hostname : " + str(hostname[g]) + "\n" + "hostId : " + data['items'][i]['hostId'])
-            hostId = data['items'][i]['hostId']
-            url2 = "http://cm-sj.csi.akadns.net:7180/api/v19/hosts/" + hostId
-            clusterdetails = requests.get(url2, auth=(username, passwd))
-            clusterdata = clusterdetails.json()
-            for j in range(len(clusterdata['clusterRef'])):
-                print("Cluster : " + clusterdata['roleRefs'][j]['clusterName'])
-                print("Overall Health : " + clusterdata['healthSummary'] + "\n" + "Maintenance Mode : " + str(
-                    clusterdata['maintenanceMode']) + "\n" + "Commission State : " + clusterdata[
-                          'commissionState'] + "\n\n" + "Roles in " + clusterdata['hostname'] + " (Role Count:" + str(
-                    len(clusterdata['roleRefs'])) + ")")
-                for k in range(len(clusterdata['roleRefs'])):
-                    print("\t" + str(k + 1) + ". " + clusterdata['roleRefs'][k]['roleName'])
-                    k += 1
-                j += 1
-            i += 1
-    g+=1
+hostname = args.host
+datacenter = args.dc
+username = args.user
+password = args.password
+
+try:
+    host_arr = hostname.split()
+except AttributeError:
+    print("\n\t" + "Usage: ./healthcheck.py -h")
+    exit()
+
+dns = "csi.akadns.net"
+port = "7180"
+
+
+def health_check(host_arr, username, password):
+    if datacenter == "sj":
+        dc_alias = "sj"
+        url = "http://cm-{}.{}:{}/api/v19/hosts/".format((str(dc_alias)), str(dns), str(port))
+    if datacenter == "ch":
+        dc_alias = "chicago"
+        url = "http://cm-{}.{}:{}/api/v19/hosts/".format((str(dc_alias)), str(dns), str(port))
+    data1 = requests.get(url, auth=(username, password))
+    data = data1.json()
+    print(
+        "\n\n\n" + "-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-." + "\n" + '\033[1m' + "        Host Summary          " + '\033[0m' + "\n" + "_._._._._._._._._._._._._._._._._." + "\n\n")
+    for g in range(len(host_arr)):
+        for i in range(len(data['items'])):
+            if str(host_arr[g]) in data['items'][i]['hostname']:
+                print("\n" + "~.~.~.~.~.~.~.~.~.~.~.~.~.~.~.~." + "\n\n" + "Hostname : " + str(
+                    host_arr[g]) + "\n" + "hostId : " + data['items'][i]['hostId'] +"\n")
+                # hostId = data['items'][i]['hostId']
+                url2 = "http://cm-{}.{}:{}/api/v19/hosts/{}".format(str(dc_alias), str(dns), str(port),
+                                                                    str(data['items'][i]['hostId']))
+                clusterdetails = requests.get(url2, auth=(username, password))
+                clusterdata = clusterdetails.json()
+                try:
+                    for j in range(len(clusterdata['clusterRef'])):
+                        if not clusterdata['roleRefs']:
+                            print("Cluster : " + clusterdata['clusterRef']['clusterName'] + "\n" + "Overall Health : " +
+                                  clusterdata['healthSummary'] + "\n" + "Maintenance Mode : " + str(
+                                clusterdata['maintenanceMode']) + "\n" + "Commission State : " + clusterdata[
+                                      'commissionState'])
+                            print("Roles in " + host_arr[g] + ": " + '\033[1m' +"No Roles" + '\033[0m')
+                        if clusterdata['roleRefs']:
+                            print("Cluster : " + clusterdata['roleRefs'][j]['clusterName'])
+                            print(
+                                "Overall Health : " + clusterdata['healthSummary'] + "\n" + "Maintenance Mode : " + str(
+                                    clusterdata['maintenanceMode']) + "\n" + "Commission State : " + clusterdata[
+                                    'commissionState'] + "\n\n" + "Roles in " + clusterdata[
+                                    'hostname'] + " (Role Count:" + str(
+                                    len(clusterdata['roleRefs'])) + ")")
+                        for k in range(len(clusterdata['roleRefs'])):
+                            print("\t" + str(k + 1) + ". " + clusterdata['roleRefs'][k]['roleName'] + "\n")
+                            k += 1
+                        j += 1
+                except KeyError:
+                    print("\n" + '\033[1m' + "Warning: Machine " + str(clusterdata['hostname']) +" has duplicate instance in cloudera/Not part of any Cluster" + '\033[0m' +"\n")
+                i += 1
+        g += 1
+
+
+def main():
+    health_check(host_arr, username, password)
+
+
+if __name__ == "__main__":
+    main()
