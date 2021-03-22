@@ -12,28 +12,32 @@ parser.add_argument("--password", help="Enter the CM password")
 
 args = parser.parse_args()
 
+# command line arguments
+
 hostname = args.host
 datacenter = args.dc
 username = args.user
 password = args.password
 
+# hostname array
 try:
     host_arr = hostname.split()
 except AttributeError:
     print("\n\t" + "Usage: ./healthcheck.py -h")
     exit()
 
-dns = "csi.akadns.net"
-port = "7180"
+cm_dns = "csi.akadns.net"
+cm_port = "7180"
+cm_api_ver = "v19"
 
 
 def health_check(host_arr, username, password):
     if datacenter == "sj":
         dc_alias = "sj"
-        url = "http://cm-{}.{}:{}/api/v19/hosts/".format((str(dc_alias)), str(dns), str(port))
+        url = "http://cm-{}.{}:{}/api/v19/hosts/".format((str(dc_alias)), str(cm_dns), str(cm_port))
     if datacenter == "ch":
         dc_alias = "chicago"
-        url = "http://cm-{}.{}:{}/api/v19/hosts/".format((str(dc_alias)), str(dns), str(port))
+        url = "http://cm-{}.{}:{}/api/v19/hosts/".format((str(dc_alias)), str(cm_dns), str(cm_port))
     data1 = requests.get(url, auth=(username, password))
     data = data1.json()
     print(
@@ -42,10 +46,10 @@ def health_check(host_arr, username, password):
         for i in range(len(data['items'])):
             if str(host_arr[g]) in data['items'][i]['hostname']:
                 print("\n" + "~.~.~.~.~.~.~.~.~.~.~.~.~.~.~.~." + "\n\n" + "Hostname : " + str(
-                    host_arr[g]) + "\n" + "hostId : " + data['items'][i]['hostId'] +"\n")
+                    host_arr[g]) + "\n" + "hostId : " + data['items'][i]['hostId'] + "\n")
                 # hostId = data['items'][i]['hostId']
-                url2 = "http://cm-{}.{}:{}/api/v19/hosts/{}".format(str(dc_alias), str(dns), str(port),
-                                                                    str(data['items'][i]['hostId']))
+                url2 = "http://cm-{}.{}:{}/api/{}/hosts/{}".format(str(dc_alias), str(cm_dns), str(cm_port),
+                                                                   str(cm_api_ver), str(data['items'][i]['hostId']))
                 clusterdetails = requests.get(url2, auth=(username, password))
                 clusterdata = clusterdetails.json()
                 try:
@@ -55,7 +59,7 @@ def health_check(host_arr, username, password):
                                   clusterdata['healthSummary'] + "\n" + "Maintenance Mode : " + str(
                                 clusterdata['maintenanceMode']) + "\n" + "Commission State : " + clusterdata[
                                       'commissionState'])
-                            print("Roles in " + host_arr[g] + ": " + '\033[1m' +"No Roles" + '\033[0m')
+                            print("\n" + "Roles in " + host_arr[g] + ": " + '\033[1m' + "No Roles" + '\033[0m')
                         if clusterdata['roleRefs']:
                             print("Cluster : " + clusterdata['roleRefs'][j]['clusterName'])
                             print(
@@ -63,13 +67,20 @@ def health_check(host_arr, username, password):
                                     clusterdata['maintenanceMode']) + "\n" + "Commission State : " + clusterdata[
                                     'commissionState'] + "\n\n" + "Roles in " + clusterdata[
                                     'hostname'] + " (Role Count:" + str(
-                                    len(clusterdata['roleRefs'])) + ")")
+                                    len(clusterdata['roleRefs'])) + ")" + "\n")
                         for k in range(len(clusterdata['roleRefs'])):
-                            print("\t" + str(k + 1) + ". " + clusterdata['roleRefs'][k]['roleName'] + "\n")
+                            url4 = "http://cm-{}.{}.:{}/api/{}/clusters/{}/services/{}/roles/{}".format(str(dc_alias), str(cm_dns), str(cm_port), str(cm_api_ver), str(clusterdata['clusterRef']['clusterName']), str(clusterdata['roleRefs'][k][
+                                       'serviceName']), str(clusterdata['roleRefs'][k]['roleName']))
+                            roledetails = requests.get(url4, auth=(username, password))
+                            roledata = roledetails.json()
+                            print("\t" + str(k + 1) + ". " + clusterdata['roleRefs'][k]['roleName'] + '\033[1m' + " - " +
+                                  roledata['type'] + " (RoleState: " + roledata[
+                                      'healthSummary'] + ")" + '\033[0m' + "\n")
                             k += 1
                         j += 1
                 except KeyError:
-                    print("\n" + '\033[1m' + "Warning: Machine " + str(clusterdata['hostname']) +" has duplicate instance in cloudera/Not part of any Cluster" + '\033[0m' +"\n")
+                    print("\n" + '\033[1m' + "Warning: Machine " + str(clusterdata[
+                                                                           'hostname']) + " has duplicate instance in cloudera/Not part of any Cluster" + '\033[0m' + "\n")
                 i += 1
         g += 1
 
