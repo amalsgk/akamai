@@ -23,6 +23,7 @@ class sanity:
         self.cluster_json_data = {}
         self.roles_json_data = {}
         self.host_existence = []
+        self.host_existence_ID = []
         self.host_Id = []
         self.endor_host_ID = []
         self.endor_hostname = []
@@ -30,8 +31,17 @@ class sanity:
         self.la_host_ID = []
         self.la_hostname = []
         self.la_ip = []
+        self.other_INT_host_ID = []
+        self.other_INT_hostname = []
+        self.other_INT_ip = []
+        self.other_MR_host_ID = []
+        self.other_MR_hostname = []
+        self.other_MR_ip = []
 
     def dc_map(self):
+        """
+        Generate DC_URL according to the inputs
+        """
         if self.dc == "sj":
             dc_alias = "sj"
             self.hosts_url = "http://cm-{}.{}:{}/api/{}".format((str(dc_alias)), str(self.cm_dns), str(self.cm_port),
@@ -42,8 +52,11 @@ class sanity:
                                                                 str(self.cm_api_ver))
 
     def h2ip(self):
-        try:
-            for hosts in self.host_array:
+        """
+        Converts the parsed hostnames to external_IP
+        """
+        for hosts in self.host_existence:
+            try:
                 s_str = str(hosts).replace("-", ".", 3).replace(".csi.foo.bar", "", 1).replace("a10.", "", 1)
                 cmd2 = "ssh -A -oHostKeyAlgorithms=+ssh-dss lsg-gss5.netmgmt.akamai.com '"'cat acl/configuration/configuration.csi | grep -w "'"" + str(
                     s_str) + '"' + "'"
@@ -52,177 +65,278 @@ class sanity:
                     pattern = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
                     result = pattern.search(ip).group(0)
                     self.host_ip.append(result)
-        except AttributeError:
-            print("Invalid host")
-            exit()
+            except AttributeError:
+                print("Invalid host")
+                exit()
 
     def gen_json_data(self):
+        """
+        Fetches the basic JSON data regarding the host
+        """
         req_hosts_url = requests.get((self.hosts_url + "/hosts/"), auth=(self.user, self.passwd))
         self.json_data = req_hosts_url.json()['items']
-
-    def filter_hosts_data(self):
-        print(
-            "\n\n\n" + "-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-." + "\n" + '\033[1m' + "        Host Summary          " + '\033[0m' + "\n" + "_._._._._._._._._._._._._._._._._." + "\n\n")
         for i in range(len(self.host_array)):
             for j in range(len(self.json_data)):
                 if self.host_array[i] in self.json_data[j]['hostname']:
-                    print(
-                        "\n" + "~.~.~.~.~.~.~.~.~.~.~.~.~.~.~.~." + "\n\n" + "Hostname : " + self.json_data[j][
-                            'hostname'] + "\n" + "Host ID : " + self.json_data[j][
-                            'hostId'] + "\n" + "Host IP : " + str(self.host_ip[i]) + "\n" + "Maintenance mode : " + str(self.json_data[j]['maintenanceMode']))
-                    self.host_existence.append(self.json_data[j]['hostname'])
-                    self.host_Id.append(self.json_data[j]['hostId'])
-                    cluster_url = requests.get((self.hosts_url + "/hosts/" + self.json_data[j]['hostId']),
-                                               auth=(self.user, self.passwd))
-                    self.cluster_json_data = cluster_url.json()
-                    for k in range(len(self.cluster_json_data['clusterRef'])):
-                        if not self.cluster_json_data['roleRefs']:
-                            print("Cluster : " + self.cluster_json_data['clusterRef'][
-                                'clusterName'] + "\n" + "Overall Health : " +
-                                  self.cluster_json_data['healthSummary'] + "\n" + "Maintenance Mode : " + str(
-                                self.cluster_json_data['maintenanceMode']) + "\n" + "Commission State : " +
-                                  self.cluster_json_data[
-                                      'commissionState'])
-                            print("\n" + "Roles in " + self.host_array[i] + ": " + '\033[1m' + "No Roles" + '\033[0m')
-                        if self.cluster_json_data['roleRefs']:
-                            print("Cluster : " + self.cluster_json_data['roleRefs'][k]['clusterName'])
-                            print(
-                                "Overall Health : " + self.cluster_json_data[
-                                    'healthSummary'] + "\n" + "Maintenance Mode : " + str(
-                                    self.cluster_json_data['maintenanceMode']) + "\n" + "Commission State : " +
-                                self.cluster_json_data[
-                                    'commissionState'] + "\n\n" + "Roles in " + self.cluster_json_data[
-                                    'hostname'] + " (Role Count:" + str(
-                                    len(self.cluster_json_data['roleRefs'])) + ")" + "\n")
-                        for li in range(len(self.cluster_json_data['roleRefs'])):
-                            roles_url = requests.get((self.hosts_url + "/clusters/" + str(
-                                self.cluster_json_data['roleRefs'][li]['clusterName']) + "/services/" + str(
-                                self.cluster_json_data['roleRefs'][li]['serviceName']) + "/roles/" + str(
-                                self.cluster_json_data['roleRefs'][li]['roleName'])), auth=(self.user, self.passwd))
-                            self.roles_json_data = roles_url.json()
-                            print("\t" + str(li + 1) + ". " + self.cluster_json_data['roleRefs'][li][
-                                'roleName'] + '\033[1m' + " - " +
-                                  self.roles_json_data['type'] + " (RoleState: " + self.roles_json_data[
-                                      'healthSummary'] + ")" + '\033[0m')
-                            li += 1
-                        k += 1
+                    if self.host_array[i] not in self.host_existence:
+                        self.host_existence.append(self.host_array[i])
+                        self.host_existence_ID.append(self.json_data[j]['hostId'])
                     j += 1
             i += 1
-        if not self.host_existence:
-            print("Wrong DC")
+        for i in range(len(self.host_array)):
+            if self.host_array[i] not in self.host_existence:
+                print('\n' + '\033[1m' + "**Warning: Wrong DC/Host " + '"' + str(self.host_array[i]) + '"' + " doesn't exist in Cloudera Manager " + str(self.dc) + '\033[0m')
+            i += 1
+
+    def filter_hosts_data(self):
+        """
+        Prints Host summary from the fetched JSON data and displays in Terminal
+        """
+        if str(len(self.host_existence)) != '0':
+            print(
+                "\n\n\n" + "-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-." + "\n" + '\033[1m' + "        Host Summary          " + '\033[0m' + "\n" + "_._._._._._._._._._._._._._._._._." + "\n\n")
+            for i in range(len(self.host_existence)):
+                for j in range(len(self.json_data)):
+                    if self.host_existence[i] in self.json_data[j]['hostname']:
+                        print(
+                            "\n" + "~.~.~.~.~.~.~.~.~.~.~.~.~.~.~.~." + "\n\n" + "Hostname : " + self.json_data[j][
+                                'hostname'] + "\n" + "Host ID : " + self.json_data[j][
+                                'hostId'] + "\n" + "Host IP : " + str(
+                                self.host_ip[i]) + "\n" + "Maintenance mode : " + str(
+                                self.json_data[j]['maintenanceMode']))
+                        # self.host_existence.append(self.json_data[j]['hostname'])
+                        self.host_Id.append(self.json_data[j]['hostId'])
+                        cluster_url = requests.get((self.hosts_url + "/hosts/" + self.json_data[j]['hostId']),
+                                                   auth=(self.user, self.passwd))
+                        self.cluster_json_data = cluster_url.json()
+                        try:
+                            for k in range(len(self.cluster_json_data['clusterRef'])):
+                                try:
+                                    if not self.cluster_json_data['roleRefs']:
+                                        print("Cluster : " + self.cluster_json_data['clusterRef'][
+                                            'clusterName'] + "\n" + "Overall Health : " +
+                                              self.cluster_json_data[
+                                                  'healthSummary'] + "\n" + "Maintenance Mode : " + str(
+                                            self.cluster_json_data['maintenanceMode']) + "\n" + "Commission State : " +
+                                              self.cluster_json_data[
+                                                  'commissionState'])
+                                        print("\n" + "Roles in " + self.host_array[
+                                            i] + ": " + '\033[1m' + "No Roles" + '\033[0m')
+                                    if self.cluster_json_data['roleRefs']:
+                                        print("Cluster : " + self.cluster_json_data['roleRefs'][k]['clusterName'])
+                                        print(
+                                            "Overall Health : " + self.cluster_json_data[
+                                                'healthSummary'] + "\n" + "Maintenance Mode : " + str(
+                                                self.cluster_json_data[
+                                                    'maintenanceMode']) + "\n" + "Commission State : " +
+                                            self.cluster_json_data[
+                                                'commissionState'] + "\n\n" + "Roles in " + self.cluster_json_data[
+                                                'hostname'] + " (Role Count:" + str(
+                                                len(self.cluster_json_data['roleRefs'])) + ")" + "\n")
+                                    for li in range(len(self.cluster_json_data['roleRefs'])):
+                                        roles_url = requests.get((self.hosts_url + "/clusters/" + str(
+                                            self.cluster_json_data['roleRefs'][li]['clusterName']) + "/services/" + str(
+                                            self.cluster_json_data['roleRefs'][li]['serviceName']) + "/roles/" + str(
+                                            self.cluster_json_data['roleRefs'][li]['roleName'])),
+                                                                 auth=(self.user, self.passwd))
+                                        self.roles_json_data = roles_url.json()
+                                        print("\t" + str(li + 1) + ". " + self.cluster_json_data['roleRefs'][li][
+                                            'roleName'] + '\033[1m' + " - " +
+                                              self.roles_json_data['type'] + " (RoleState: " + self.roles_json_data[
+                                                  'healthSummary'] + ")" + '\033[0m')
+                                        li += 1
+                                    k += 1
+                                    continue
+                                except KeyError:
+                                    print("Machine has duplicate instance in cloudera/Not part of any cluster. Investigate")
+                        except KeyError:
+                            print("Machine has duplicate instance in cloudera/Not part of any cluster. Investigate")
+                    j += 1
+                i += 1
 
     def endor_finder(self):
-        endor_url = requests.get((self.hosts_url + "/clusters/int/services/csi_endor/roles/"),
-                                 auth=(self.user, self.passwd))
-        endor_json_data = endor_url.json()['items']
-        for i in range(len(self.host_Id)):
-            for j in range(len(endor_json_data)):
-                if self.host_Id[i] in endor_json_data[j]['hostRef']['hostId']:
-                    if endor_json_data[j]['type'] == "CSI_ENDOR_INDEXER" or endor_json_data[j]['type'] == "CSI_ENDOR_WORKER":
-                        for k in range(len(self.json_data)):
-                            if self.host_Id[i] in self.json_data[k]['hostId']:
-                                self.endor_host_ID.append(self.host_Id[i])
-                                self.endor_hostname.append(self.json_data[k]['hostname'])
-                            k += 1
-                j += 1
-            i += 1
-        if self.endor_hostname:
-            print("\n" + '\033[1m' + "IMPORTANT:: " + "(" + str(len(
-                self.endor_hostname)) + ") " + "Endor hosts found, performing additional checks..." + '\033[0m' + "\n")
-            for hosts in self.endor_hostname:
-                s_str = str(hosts).replace("-", ".", 3).replace(".csi.foo.bar", "", 1).replace("a10.", "", 1)
-                cmd2 = "ssh -A -oHostKeyAlgorithms=+ssh-dss lsg-gss5.netmgmt.akamai.com '"'cat acl/configuration/configuration.csi | grep -w "'"" + str(
-                    s_str) + '"' + "'"
-                host_exec = subprocess.Popen(cmd2, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
-                for ip in host_exec.stdout:
-                    pattern = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
-                    result = pattern.search(ip).group(0)
-                    self.endor_ip.append(result)
+        """
+        if any ENDOR machines are found then extra checks like Machine health, PARCELS, ENDOR Disk space etc. will be checked and display in Terminal.
+        """
+        if str(len(self.host_existence)) != '0':
+            endor_url = requests.get((self.hosts_url + "/clusters/int/services/csi_endor/roles/"),
+                                     auth=(self.user, self.passwd))
+            endor_json_data = endor_url.json()['items']
+            for i in range(len(self.host_Id)):
+                for j in range(len(endor_json_data)):
+                    if self.host_Id[i] in endor_json_data[j]['hostRef']['hostId']:
+                        if endor_json_data[j]['type'] == "CSI_ENDOR_INDEXER" or endor_json_data[j]['type'] == "CSI_ENDOR_WORKER":
+                            for k in range(len(self.json_data)):
+                                if self.host_Id[i] in self.json_data[k]['hostId']:
+                                    self.endor_host_ID.append(self.host_Id[i])
+                                    self.endor_hostname.append(self.json_data[k]['hostname'])
+                                k += 1
+                    j += 1
+                i += 1
             if self.endor_hostname:
-                print('\033[1m' + "ENDOR Hostnames : " + '\033[0m')
-                for hostname in self.endor_hostname:
-                    print("\t" + str(hostname))
-            if self.endor_ip:
-                print('\033[1m' + "ENDOR Host IP : " + '\033[0m')
-                for ip in self.endor_ip:
-                    print("\t" + str(ip))
-        for ip in range(len(self.endor_ip)):
-            try:
-                print("\n" + '\033[1m' + "Running Sanity Checks on " + str(self.endor_ip[ip]) + '\033[0m')
-                print('\033[1m' + "======================================" + '\033[0m')
-                cmd4 = "ssh -A -o HostKeyAlgorithms=+ssh-dss lsg-gss5.netmgmt.akamai.com" + " '" + "/usr/local/akamai/bin/gwsh csiop@" + str(
-                    self.endor_ip[
-                        ip]) + ' "' + "echo ; echo "'"[-] Uptime"'" ; uptime -p ; echo ; echo "'"[-] Filesystem count"'"  ; df -h | grep -v Filesystem | wc -l ; echo ; echo "'"[-] Mounted Filesystems"'" ;  df -h ; echo ; echo "'"[-] ENDOR Disk utilization"'" ; df -h  /ghostcache/csi/endor/ramdisk ; echo ; echo "'"[-] Checking Akamai Services"'" ; /a/sbin/akamai_run check akamai ; echo ; echo "'"[-] File checks"'" ; echo ; test -f /etc/csi/csi-env/conf/env.properties && echo "'"1. Env file exists"'" || echo "'"1. Warning : Env file not found"'"; echo ; test -f /opt/cloudera/parcels/CSI_OPS_PARCEL/meta/scripts/host_health_check/host_healthcheck.py && echo "'"2. PARCELS exists"'" || echo "'"2. Warning : PARCELS Missing"'"; echo ; test -f /a/csi-general/kmi/edgescape/facil.cert.gpg && echo "'"3. KMI exists"'" || echo "'"3. Warning : KMI Missing"'"; echo ;  test -f /a/csi-general/kmi/nat_repository/nat_repository.key && echo "'"4. NAT repo file exists"'" || echo "'"4. Warning : NAT repo file missing"'"; echo ; test -f /a/csi-secrets/ewok/extra-certs/ewok_csi.jks && echo "'"5. EWOK secrets exists"'" || echo "'"5. Warning : EWOK secrets missing"'"; echo ;         "'" '"'"
-                exec1 = subprocess.check_output(cmd4, shell=True, universal_newlines=True)
-                cmd2 = "ams_cmd=" + "'" + "(ams " + str(self.endor_ip[ip]) + ")'" + " ; output=$(echo ${ams_cmd} | ssh -T '"'amals@lsg-gss5.netmgmt.akamai.com'"') ; echo " + "'" + "[-] Active alerts for the machine " + str(self.endor_ip[ip]) + "'" "; echo "'"$output"'" "
-                exec2 = subprocess.check_output(cmd2, shell=True, universal_newlines=True)
-                cmd3 = "query=" + "'" + "(agg csi \"select data_center, ip_key, feed_key, bytes, megabytes, gigabytes, threshold_value from (SELECT CASE WHEN cm.csiCluster SIMILAR '"'"'"'"'b'"'"'"'"' THEN '"'"'"'"'Chicago'"'"'"'"' WHEN cm.csiCluster SIMILAR '"'"'"'"'c'"'"'"'"' THEN '"'"'"'"'SanJose'"'"'"'"' END data_center, clm.machineip ip_key, substr(clm.key, 43, -42) feed_key, CAST(clm.numval AS INTEGER) bytes, CAST(clm.numval AS INTEGER) / (1024*1024) megabytes, CAST(clm.numval AS INTEGER) / (1024*1024*1024) gigabytes, CAST(clm.numval AS INTEGER) / (1024*1024*1024) threshold_value FROM csi2_la_monitoring clm, csi_cm_machine_types cm WHERE clm.key like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not in ('"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.Summary.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"') AND clm.key != '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.Summary.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.%BEHAVIORAL%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.NEVADA_%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ETP%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ERROR_RESPONDER_INBOUND%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ANSWERX%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.NOMINUM%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.machineip = cm.hostExtIp AND cm.csiCluster NOT IN ( SELECT dc_name FROM csi_noccvariables WHERE category = '"'"'"'"'dc_availability'"'"'"'"' AND availability = '"'"'"'"'FALSE'"'"'"'"' UNION ALL SELECT dc_name FROM csi_noccvariables WHERE category = '"'"'"'"'la_increasing_queue'"'"'"'"' AND availability = '"'"'"'"'FALSE'"'"'"'"')) where CAST(ip_key AS STRING)=" + "'"'"'"'" + str(self.endor_ip[ip]) + "'"'"'"'" + "\"" + ")" "'" + "; output=$(echo ${query} | ssh -T '"'amals@lsg-gss5.netmgmt.akamai.com'"') ; echo ;echo " + "'" + "[-] LogAgent NRT Queue on the machine " + str(self.endor_ip[ip]) + "'" "; echo "'"$output"'" "
+                print("\n" + '\033[1m' + "IMPORTANT:: " + "(" + str(len(
+                    self.endor_hostname)) + ") " + "Endor hosts found, performing additional checks..." + '\033[0m' + "\n")
+                for hosts in self.endor_hostname:
+                    s_str = str(hosts).replace("-", ".", 3).replace(".csi.foo.bar", "", 1).replace("a10.", "", 1)
+                    cmd2 = "ssh -A -oHostKeyAlgorithms=+ssh-dss lsg-gss5.netmgmt.akamai.com '"'cat acl/configuration/configuration.csi | grep -w "'"" + str(
+                        s_str) + '"' + "'"
+                    host_exec = subprocess.Popen(cmd2, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
+                    for ip in host_exec.stdout:
+                        pattern = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
+                        result = pattern.search(ip).group(0)
+                        self.endor_ip.append(result)
+                if self.endor_hostname:
+                    print('\033[1m' + "ENDOR Hostnames : " + '\033[0m')
+                    for hostname in self.endor_hostname:
+                        print("\t" + str(hostname))
+                if self.endor_ip:
+                    print('\033[1m' + "ENDOR Host IP : " + '\033[0m')
+                    for ip in self.endor_ip:
+                        print("\t" + str(ip))
+            for ip in range(len(self.endor_ip)):
+                try:
+                    print("\n" + '\033[1m' + "Running Sanity Checks on " + str(self.endor_ip[ip]) + '\033[0m')
+                    print('\033[1m' + "======================================" + '\033[0m')
+                    cmd4 = "ssh -A -o HostKeyAlgorithms=+ssh-dss lsg-gss5.netmgmt.akamai.com" + " '" + "/usr/local/akamai/bin/gwsh csiop@" + str(
+                        self.endor_ip[
+                            ip]) + ' "' + "echo ; echo "'"[-] Uptime"'" ; uptime -p ; echo ; echo "'"[-] Filesystem count"'"  ; df -h | grep -v Filesystem | wc -l ; echo ; echo "'"[-] Mounted Filesystems"'" ;  df -h ; echo ; echo "'"[-] ENDOR Disk utilization"'" ; df -h  /ghostcache/csi/endor/ramdisk ; echo ; echo "'"[-] Checking Akamai Services"'" ; /a/sbin/akamai_run check akamai ; echo ; echo "'"[-] File checks"'" ; echo ; test -f /etc/csi/csi-env/conf/env.properties && echo "'"1. Env file exists"'" || echo "'"1. Warning : Env file not found"'"; echo ; test -f /opt/cloudera/parcels/CSI_OPS_PARCEL/meta/scripts/host_health_check/host_healthcheck.py && echo "'"2. PARCELS exists"'" || echo "'"2. Warning : PARCELS Missing"'"; echo ; test -f /a/csi-general/kmi/edgescape/facil.cert.gpg && echo "'"3. KMI exists"'" || echo "'"3. Warning : KMI Missing"'"; echo ;  test -f /a/csi-general/kmi/nat_repository/nat_repository.key && echo "'"4. NAT repo file exists"'" || echo "'"4. Warning : NAT repo file missing"'"; echo ; test -f /a/csi-secrets/ewok/extra-certs/ewok_csi.jks && echo "'"5. EWOK secrets exists"'" || echo "'"5. Warning : EWOK secrets missing"'"; echo ;         "'" '"'"
+                    exec1 = subprocess.check_output(cmd4, shell=True, universal_newlines=True)
+                    cmd2 = "ams_cmd=" + "'" + "(ams " + str(self.endor_ip[
+                                                                ip]) + ")'" + " ; output=$(echo ${ams_cmd} | ssh -T '"'amals@lsg-gss5.netmgmt.akamai.com'"') ; echo " + "'" + "[-] Active alerts for the machine " + str(
+                        self.endor_ip[ip]) + "'" "; echo "'"$output"'" "
+                    exec2 = subprocess.check_output(cmd2, shell=True, universal_newlines=True)
+                    cmd3 = "query=" + "'" + "(agg csi \"select data_center, ip_key, feed_key, bytes, megabytes, gigabytes, threshold_value from (SELECT CASE WHEN cm.csiCluster SIMILAR '"'"'"'"'b'"'"'"'"' THEN '"'"'"'"'Chicago'"'"'"'"' WHEN cm.csiCluster SIMILAR '"'"'"'"'c'"'"'"'"' THEN '"'"'"'"'SanJose'"'"'"'"' END data_center, clm.machineip ip_key, substr(clm.key, 43, -42) feed_key, CAST(clm.numval AS INTEGER) bytes, CAST(clm.numval AS INTEGER) / (1024*1024) megabytes, CAST(clm.numval AS INTEGER) / (1024*1024*1024) gigabytes, CAST(clm.numval AS INTEGER) / (1024*1024*1024) threshold_value FROM csi2_la_monitoring clm, csi_cm_machine_types cm WHERE clm.key like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not in ('"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.Summary.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"') AND clm.key != '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.Summary.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.%BEHAVIORAL%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.NEVADA_%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ETP%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ERROR_RESPONDER_INBOUND%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ANSWERX%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.NOMINUM%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.machineip = cm.hostExtIp AND cm.csiCluster NOT IN ( SELECT dc_name FROM csi_noccvariables WHERE category = '"'"'"'"'dc_availability'"'"'"'"' AND availability = '"'"'"'"'FALSE'"'"'"'"' UNION ALL SELECT dc_name FROM csi_noccvariables WHERE category = '"'"'"'"'la_increasing_queue'"'"'"'"' AND availability = '"'"'"'"'FALSE'"'"'"'"')) where CAST(ip_key AS STRING)=" + "'"'"'"'" + str(
+                        self.endor_ip[
+                            ip]) + "'"'"'"'" + "\"" + ")" "'" + "; output=$(echo ${query} | ssh -T '"'amals@lsg-gss5.netmgmt.akamai.com'"') ; echo ;echo " + "'" + "[-] LogAgent NRT Queue on the machine " + str(
+                        self.endor_ip[ip]) + "'" "; echo "'"$output"'" "
 
-                exec3 = subprocess.check_output(cmd3, shell=True, universal_newlines=True)
-                print(exec1)
-                print(exec2)
-                print(exec3)
-                ip += 1
-                continue
-            except subprocess.CalledProcessError as e:
-                print("Unsshable Machine")
-        self.la_finder()
+                    exec3 = subprocess.check_output(cmd3, shell=True, universal_newlines=True)
+                    print(exec1)
+                    print(exec2)
+                    print(exec3)
+                    ip += 1
+                    continue
+                except subprocess.CalledProcessError as e:
+                    print("Unsshable Machine")
+            self.la_finder()
 
     def la_finder(self):
-        la_url = requests.get((self.hosts_url + "/clusters/mr/services/csi_log_agent/roles/"), auth=(self.user, self.passwd))
-        la_json_data = la_url.json()['items']
-        for i in range(len(self.host_Id)):
-            for j in range(len(la_json_data)):
-                if self.host_Id[i] in la_json_data[j]['hostRef']['hostId']:
-                    if la_json_data[j]['type'] == "CSI_LOG_AGENT":
-                        for k in range(len(self.json_data)):
-                            if self.host_Id[i] in self.json_data[k]['hostId']:
-                                self.la_host_ID.append(self.host_Id[i])
-                                self.la_hostname.append(self.json_data[k]['hostname'])
-                            k += 1
-                j += 1
-            i += 1
-        if self.la_hostname:
-            print("\n" + '\033[1m' + "IMPORTANT:: " + "(" + str(len(
-                self.la_hostname)) + ") " + "LogAgent hosts found, performing additional checks..." + '\033[0m' + "\n")
-            for hosts in self.la_hostname:
-                s_str = str(hosts).replace("-", ".", 3).replace(".csi.foo.bar", "", 1).replace("a10.", "", 1)
-                cmd2 = "ssh -A -oHostKeyAlgorithms=+ssh-dss lsg-gss5.netmgmt.akamai.com '"'cat acl/configuration/configuration.csi | grep -w "'"" + str(
-                    s_str) + '"' + "'"
-                host_exec = subprocess.Popen(cmd2, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
-                for ip in host_exec.stdout:
-                    pattern = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
-                    result = pattern.search(ip).group(0)
-                    self.la_ip.append(result)
+        """
+        if any LogAgent/LogAgent REPLAY machines are found then extra checks like Machine health, PARCELS, LogAgent Disk space etc. will be checked and display in Terminal.
+        """
+        if str(len(self.host_existence)) != '0':
+            la_url = requests.get((self.hosts_url + "/clusters/mr/services/csi_log_agent/roles/"),
+                                  auth=(self.user, self.passwd))
+            la_json_data = la_url.json()['items']
+            for i in range(len(self.host_Id)):
+                for j in range(len(la_json_data)):
+                    if self.host_Id[i] in la_json_data[j]['hostRef']['hostId']:
+                        if la_json_data[j]['type'] == "CSI_LOG_AGENT" or la_json_data[j]['type'] == "CSI_LOG_AGENT_REPLAY":
+                            for k in range(len(self.json_data)):
+                                if self.host_Id[i] in self.json_data[k]['hostId']:
+                                    self.la_host_ID.append(self.host_Id[i])
+                                    self.la_hostname.append(self.json_data[k]['hostname'])
+                                k += 1
+                    j += 1
+                i += 1
             if self.la_hostname:
-                print('\033[1m' + "LogAgent Hostnames : " + '\033[0m')
-                for hostname in self.la_hostname:
-                    print("\t" + str(hostname))
-            if self.la_ip:
-                print('\033[1m' + "LogAgent Host IP : " + '\033[0m')
-                for ip in self.la_ip:
-                    print("\t" + str(ip))
-        for ip in range(len(self.la_ip)):
-            try:
-                print("\n" + '\033[1m' + "Running Sanity Checks on " + str(self.la_ip[ip]) + '\033[0m')
-                print('\033[1m' + "======================================" + '\033[0m')
-                cmd1 = "ssh -A -o HostKeyAlgorithms=+ssh-dss lsg-gss5.netmgmt.akamai.com" + " '" + "/usr/local/akamai/bin/gwsh csiop@" + str(
-                    self.la_ip[
-                        ip]) + ' "' + "echo ; echo "'"[-] Uptime"'" ; uptime -p ; echo ; echo "'"[-] Filesystem count"'"  ; df -h | grep -v Filesystem | wc -l ; echo ; echo "'"[-] Mounted Filesystems"'" ;  df -h ; echo ; echo "'"[-] LogAgent Disk utilization"'" ; df -h  /ghostcache/csi/logagent/ramdisk ; echo ; echo "'"[-] Checking Akamai Services"'" ; /a/sbin/akamai_run check akamai ; echo ; echo "'"[-] File checks"'" ; echo ; test -f /etc/csi/csi-env/conf/env.properties && echo "'"1. Env file exists"'" || echo "'"1. Warning : Env file not found"'"; echo ; test -f /opt/cloudera/parcels/CSI_OPS_PARCEL/meta/scripts/host_health_check/host_healthcheck.py && echo "'"2. PARCELS exists"'" || echo "'"2. Warning : PARCELS Missing"'"; echo ; test -f /a/csi-general/kmi/edgescape/facil.cert.gpg && echo "'"3. KMI exists"'" || echo "'"3. Warning : KMI Missing"'"; echo ;  test -f /a/csi-general/kmi/nat_repository/nat_repository.key && echo "'"4. NAT repo file exists"'" || echo "'"4. Warning : NAT repo file missing"'"; echo ; test -f /a/csi-secrets/ewok/extra-certs/ewok_csi.jks && echo "'"5. EWOK secrets exists"'" || echo "'"5. Warning : EWOK secrets missing"'"; echo ;         "'" '"'"
-                exec1 = subprocess.check_output(cmd1, shell=True, universal_newlines=True)
-                cmd2 = "ams_cmd=" + "'" + "(ams " + str(self.la_ip[
-                                                            ip]) + ")'" + " ; output=$(echo ${ams_cmd} | ssh -T '"'amals@lsg-gss5.netmgmt.akamai.com'"') ; echo " + "'" + "[-] Active alerts for the machine " + str(
-                    self.la_ip[ip]) + "'" "; echo "'"$output"'" "
-                exec2 = subprocess.check_output(cmd2, shell=True, universal_newlines=True)
-                cmd3 = "query=" + "'" + "(agg csi \"select data_center, ip_key, feed_key, bytes, megabytes, gigabytes, threshold_value from (SELECT CASE WHEN cm.csiCluster SIMILAR '"'"'"'"'b'"'"'"'"' THEN '"'"'"'"'Chicago'"'"'"'"' WHEN cm.csiCluster SIMILAR '"'"'"'"'c'"'"'"'"' THEN '"'"'"'"'SanJose'"'"'"'"' END data_center, clm.machineip ip_key, substr(clm.key, 43, -42) feed_key, CAST(clm.numval AS INTEGER) bytes, CAST(clm.numval AS INTEGER) / (1024*1024) megabytes, CAST(clm.numval AS INTEGER) / (1024*1024*1024) gigabytes, CAST(clm.numval AS INTEGER) / (1024*1024*1024) threshold_value FROM csi2_la_monitoring clm, csi_cm_machine_types cm WHERE clm.key like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not in ('"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.Summary.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"') AND clm.key != '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.Summary.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.%BEHAVIORAL%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.NEVADA_%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ETP%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ERROR_RESPONDER_INBOUND%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ANSWERX%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.NOMINUM%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.machineip = cm.hostExtIp AND cm.csiCluster NOT IN ( SELECT dc_name FROM csi_noccvariables WHERE category = '"'"'"'"'dc_availability'"'"'"'"' AND availability = '"'"'"'"'FALSE'"'"'"'"' UNION ALL SELECT dc_name FROM csi_noccvariables WHERE category = '"'"'"'"'la_increasing_queue'"'"'"'"' AND availability = '"'"'"'"'FALSE'"'"'"'"')) where CAST(ip_key AS STRING)=" + "'"'"'"'" + str(self.la_ip[ip]) + "'"'"'"'" + "\"" + ")" "'" + "; output=$(echo ${query} | ssh -T '"'amals@lsg-gss5.netmgmt.akamai.com'"') ; echo ;echo " + "'" + "[-] LogAgent Queue on the machine " + str(self.la_ip[ip]) + "'" "; echo "'"$output"'" "
-                exec3 = subprocess.check_output(cmd3, shell=True, universal_newlines=True)
-                print(exec1)
-                print(exec2)
-                print(exec3)
+                print("\n" + '\033[1m' + "IMPORTANT:: " + "(" + str(len(
+                    self.la_hostname)) + ") " + "LogAgent hosts found, performing additional checks..." + '\033[0m' + "\n")
+                for hosts in self.la_hostname:
+                    s_str = str(hosts).replace("-", ".", 3).replace(".csi.foo.bar", "", 1).replace("a10.", "", 1)
+                    cmd2 = "ssh -A -oHostKeyAlgorithms=+ssh-dss lsg-gss5.netmgmt.akamai.com '"'cat acl/configuration/configuration.csi | grep -w "'"" + str(
+                        s_str) + '"' + "'"
+                    host_exec = subprocess.Popen(cmd2, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
+                    for ip in host_exec.stdout:
+                        pattern = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
+                        result = pattern.search(ip).group(0)
+                        self.la_ip.append(result)
+                if self.la_hostname:
+                    print('\033[1m' + "LogAgent Hostnames : " + '\033[0m')
+                    for hostname in self.la_hostname:
+                        print("\t" + str(hostname))
+                if self.la_ip:
+                    print('\033[1m' + "LogAgent Host IP : " + '\033[0m')
+                    for ip in self.la_ip:
+                        print("\t" + str(ip))
+            for ip in range(len(self.la_ip)):
+                try:
+                    print("\n" + '\033[1m' + "Running Sanity Checks on " + str(self.la_ip[ip]) + '\033[0m')
+                    print('\033[1m' + "======================================" + '\033[0m')
+                    cmd1 = "ssh -A -o HostKeyAlgorithms=+ssh-dss lsg-gss5.netmgmt.akamai.com" + " '" + "/usr/local/akamai/bin/gwsh csiop@" + str(
+                        self.la_ip[
+                            ip]) + ' "' + "echo ; echo "'"[-] Uptime"'" ; uptime -p ; echo ; echo "'"[-] Filesystem count"'"  ; df -h | grep -v Filesystem | wc -l ; echo ; echo "'"[-] Mounted Filesystems"'" ;  df -h ; echo ; echo "'"[-] LogAgent Disk utilization"'" ; df -h  /ghostcache/csi/logagent/ramdisk ; echo ; echo "'"[-] Checking Akamai Services"'" ; /a/sbin/akamai_run check akamai ; echo ; echo "'"[-] File checks"'" ; echo ; test -f /etc/csi/csi-env/conf/env.properties && echo "'"1. Env file exists"'" || echo "'"1. Warning : Env file not found"'"; echo ; test -f /opt/cloudera/parcels/CSI_OPS_PARCEL/meta/scripts/host_health_check/host_healthcheck.py && echo "'"2. PARCELS exists"'" || echo "'"2. Warning : PARCELS Missing"'"; echo ; test -f /a/csi-general/kmi/edgescape/facil.cert.gpg && echo "'"3. KMI exists"'" || echo "'"3. Warning : KMI Missing"'"; echo ;  test -f /a/csi-general/kmi/nat_repository/nat_repository.key && echo "'"4. NAT repo file exists"'" || echo "'"4. Warning : NAT repo file missing"'"; echo ; test -f /a/csi-secrets/ewok/extra-certs/ewok_csi.jks && echo "'"5. EWOK secrets exists"'" || echo "'"5. Warning : EWOK secrets missing"'"; echo ;         "'" '"'"
+                    exec1 = subprocess.check_output(cmd1, shell=True, universal_newlines=True)
+                    cmd2 = "ams_cmd=" + "'" + "(ams " + str(self.la_ip[
+                                                                ip]) + ")'" + " ; output=$(echo ${ams_cmd} | ssh -T '"'amals@lsg-gss5.netmgmt.akamai.com'"') ; echo " + "'" + "[-] Active alerts for the machine " + str(
+                        self.la_ip[ip]) + "'" "; echo "'"$output"'" "
+                    exec2 = subprocess.check_output(cmd2, shell=True, universal_newlines=True)
+                    cmd3 = "query=" + "'" + "(agg csi \"select data_center, ip_key, feed_key, bytes, megabytes, gigabytes, threshold_value from (SELECT CASE WHEN cm.csiCluster SIMILAR '"'"'"'"'b'"'"'"'"' THEN '"'"'"'"'Chicago'"'"'"'"' WHEN cm.csiCluster SIMILAR '"'"'"'"'c'"'"'"'"' THEN '"'"'"'"'SanJose'"'"'"'"' END data_center, clm.machineip ip_key, substr(clm.key, 43, -42) feed_key, CAST(clm.numval AS INTEGER) bytes, CAST(clm.numval AS INTEGER) / (1024*1024) megabytes, CAST(clm.numval AS INTEGER) / (1024*1024*1024) gigabytes, CAST(clm.numval AS INTEGER) / (1024*1024*1024) threshold_value FROM csi2_la_monitoring clm, csi_cm_machine_types cm WHERE clm.key like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not in ('"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.Summary.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"') AND clm.key != '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.Summary.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.%BEHAVIORAL%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.NEVADA_%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ETP%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ERROR_RESPONDER_INBOUND%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.ANSWERX%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.key not like '"'"'"'"'com.akamai.csi.type_LogAgent.name_LogType.NOMINUM%.CurrentReadyForProcessingFilesSizeInBytes'"'"'"'"' AND clm.machineip = cm.hostExtIp AND cm.csiCluster NOT IN ( SELECT dc_name FROM csi_noccvariables WHERE category = '"'"'"'"'dc_availability'"'"'"'"' AND availability = '"'"'"'"'FALSE'"'"'"'"' UNION ALL SELECT dc_name FROM csi_noccvariables WHERE category = '"'"'"'"'la_increasing_queue'"'"'"'"' AND availability = '"'"'"'"'FALSE'"'"'"'"')) where CAST(ip_key AS STRING)=" + "'"'"'"'" + str(
+                        self.la_ip[
+                            ip]) + "'"'"'"'" + "\"" + ")" "'" + "; output=$(echo ${query} | ssh -T '"'amals@lsg-gss5.netmgmt.akamai.com'"') ; echo ;echo " + "'" + "[-] LogAgent Queue on the machine " + str(
+                        self.la_ip[ip]) + "'" "; echo "'"$output"'" "
+                    exec3 = subprocess.check_output(cmd3, shell=True, universal_newlines=True)
+                    print(exec1)
+                    print(exec2)
+                    print(exec3)
+                    ip += 1
+                    continue
+                except subprocess.CalledProcessError as e:
+                    print("Unsshable Machine")
+
+    def other_roles_int(self):
+        """
+        If machines belongs to roles other than "ENDOR/LogAgent found. Basic sanity checks will be initiated and the result will be displayed in Terminal
+        """
+        if str(len(self.host_existence)) != '0':
+            for ip in range(len(self.host_existence)):
+                if self.host_existence[ip] not in self.endor_hostname and self.host_existence[ip] not in self.la_hostname:
+                    for j in range(len(self.json_data)):
+                        if self.host_Id[ip] in self.json_data[j]['hostId']:
+                            print(self.json_data[j]['hostname'])
+                            self.other_INT_host_ID.append(self.host_Id[ip])
+                            self.other_INT_hostname.append(self.json_data[j]['hostname'])
+                        j += 1
                 ip += 1
-                continue
-            except subprocess.CalledProcessError as e:
-                print("Unsshable Machine")
+            if self.other_INT_hostname:
+                print("\n" + '\033[1m' + "IMPORTANT:: " + "(" + str(len(
+                    self.other_INT_hostname)) + ") " + "Machines with roles other than" + "'" + "ENDOR and LogAgent" + "'" + "found in " + str(
+                    self.dc) + " !!!" + "performing additional checks..." + '\033[0m' + "\n")
+                for hosts in self.other_INT_hostname:
+                    s_str = str(hosts).replace("-", ".", 3).replace(".csi.foo.bar", "", 1).replace("a10.", "", 1)
+                    cmd2 = "ssh -A -oHostKeyAlgorithms=+ssh-dss lsg-gss5.netmgmt.akamai.com '"'cat acl/configuration/configuration.csi | grep -w "'"" + str(
+                        s_str) + '"' + "'"
+                    host_exec = subprocess.Popen(cmd2, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
+                    for ip in host_exec.stdout:
+                        pattern = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
+                        result = pattern.search(ip).group(0)
+                        self.other_INT_ip.append(result)
+                if self.other_INT_hostname:
+                    print('\033[1m' + "Other roles Hostnames : " + '\033[0m')
+                    for hostname in self.other_INT_hostname:
+                        print("\t" + str(hostname))
+                if self.other_INT_ip:
+                    print('\033[1m' + "Other roles Host IP : " + '\033[0m')
+                    for ip in self.other_INT_ip:
+                        print("\t" + str(ip))
+            for ip in range(len(self.other_INT_ip)):
+                try:
+                    print("\n" + '\033[1m' + "Running Sanity Checks on " + str(self.other_INT_ip[ip]) + '\033[0m')
+                    print('\033[1m' + "======================================" + '\033[0m')
+                    cmd1 = "ssh -A -o HostKeyAlgorithms=+ssh-dss lsg-gss5.netmgmt.akamai.com" + " '" + "/usr/local/akamai/bin/gwsh csiop@" + str(
+                        self.other_INT_ip[
+                            ip]) + ' "' + "echo ; echo "'"[-] Uptime"'" ; uptime -p ; echo ; echo "'"[-] Filesystem count"'"  ; df -h | grep -v Filesystem | wc -l ; echo ; echo "'"[-] Mounted Filesystems"'" ;  df -h ; echo ; echo "'"[-] Checking Akamai Services"'" ; /a/sbin/akamai_run check akamai ; echo ; echo "'"[-] File checks"'" ; echo ; test -f /etc/csi/csi-env/conf/env.properties && echo "'"1. Env file exists"'" || echo "'"1. Warning : Env file not found"'"; echo ; test -f /opt/cloudera/parcels/CSI_OPS_PARCEL/meta/scripts/host_health_check/host_healthcheck.py && echo "'"2. PARCELS exists"'" || echo "'"2. Warning : PARCELS Missing"'"; echo ; test -f /a/csi-general/kmi/edgescape/facil.cert.gpg && echo "'"3. KMI exists"'" || echo "'"3. Warning : KMI Missing"'"; echo ;  test -f /a/csi-general/kmi/nat_repository/nat_repository.key && echo "'"4. NAT repo file exists"'" || echo "'"4. Warning : NAT repo file missing"'"; echo ; test -f /a/csi-secrets/ewok/extra-certs/ewok_csi.jks && echo "'"5. EWOK secrets exists"'" || echo "'"5. Warning : EWOK secrets missing"'"; echo ;         "'" '"'"
+                    exec1 = subprocess.check_output(cmd1, shell=True, universal_newlines=True)
+                    cmd2 = "ams_cmd=" + "'" + "(ams " + str(self.other_INT_ip[
+                                                                ip]) + ")'" + " ; output=$(echo ${ams_cmd} | ssh -T '"'amals@lsg-gss5.netmgmt.akamai.com'"') ; echo " + "'" + "[-] Active alerts for the machine " + str(
+                        self.other_INT_ip[ip]) + "'" "; echo "'"$output"'" "
+                    exec2 = subprocess.check_output(cmd2, shell=True, universal_newlines=True)
+                    print(exec1)
+                    print(exec2)
+                    ip += 1
+                    continue
+                except subprocess.CalledProcessError as e:
+                    print("Unsshable Machine")
 
 
 def main():
@@ -242,7 +356,6 @@ def main():
 
     try:
         host_array = str(hostname).replace(',', ' ').replace('{', ' ').replace('}', ' ').split()
-        print(host_array)
     except AttributeError:
         print("\n\t" + "Usage: ./healthcheck.py -h")
         exit()
@@ -251,11 +364,12 @@ def main():
     cm_port = "7180"
     cm_api_ver = "v19"
     a = sanity(datacenter, cm_dns, cm_port, cm_api_ver, username, password, host_array)
-    a.h2ip()
     a.dc_map()
     a.gen_json_data()
+    a.h2ip()
     a.filter_hosts_data()
     a.endor_finder()
+    a.other_roles_int()
 
 
 if __name__ == "__main__":
